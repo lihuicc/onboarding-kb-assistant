@@ -1,0 +1,44 @@
+{
+  "name": "onboarding-kb-assistant",
+  "version": "1.0.0",
+  "description": "员工入职知识库问答助手 - SAP CAP + Claude AI",
+  "main": "srv/server.js",
+  "scripts": {
+    "start": "cds run",
+    "dev": "cds watch",
+    "build": "cds build",
+    "test": "jest",
+    "watch-kb-manager": "cds watch --open kbmanager/index.html?sap-ui-xx-viewCache=false --livereload false"
+  },
+  "dependencies": {
+    "@sap/cds": "^8",
+    "@anthropic-ai/sdk": "^0.39.0",
+    "express": "^4"
+  },
+  "devDependencies": {
+    "@cap-js/sqlite": "^1",
+    "@sap/cds-dk": "^8",
+    "jest": "^29",
+    "cds-plugin-ui5": "^0.13.0"
+  },
+  "cds": {
+    "requires": {
+      "db": {
+        "kind": "sqlite",
+        "credentials": {
+          "database": "db.sqlite"
+        }
+      }
+    },
+    "features": {
+      "fiori_routes": true
+    },
+    "roots": ["db", "srv", "app"]
+  },
+  "workspaces": [
+    "app/*"
+  ],
+  "sapux": [
+    "app/kb-manager"
+  ]
+}

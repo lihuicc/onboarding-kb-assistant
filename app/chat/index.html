@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HR 助手 — 入职知识库问答</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      background: #f5f6fa;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── 顶栏 ── */
+    header {
+      background: #0a6ed1;
+      color: #fff;
+      padding: 0 24px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+      box-shadow: 0 2px 6px rgba(0,0,0,.18);
+    }
+    header .logo { font-size: 22px; }
+    header h1 { font-size: 17px; font-weight: 600; }
+    header .subtitle { font-size: 12px; opacity: .75; margin-left: auto; }
+
+    /* ── 主体布局 ── */
+    .main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── 侧边栏：历史对话 ── */
+    .sidebar {
+      width: 240px;
+      background: #fff;
+      border-right: 1px solid #e5e5e5;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+    .sidebar-header {
+      padding: 14px 16px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #6c757d;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      border-bottom: 1px solid #f0f0f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .btn-new {
+      background: #0a6ed1;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .btn-new:hover { background: #085cb8; }
+    .session-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+    .session-item {
+      padding: 10px 16px;
+      cursor: pointer;
+      font-size: 13px;
+      color: #333;
+      border-left: 3px solid transparent;
+      transition: background .15s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .session-item:hover { background: #f5f6fa; }
+    .session-item.active { background: #e8f0fb; border-left-color: #0a6ed1; color: #0a6ed1; font-weight: 500; }
+
+    /* ── 聊天区 ── */
+    .chat-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* 欢迎语 */
+    .welcome {
+      text-align: center;
+      padding: 48px 16px;
+      color: #6c757d;
+    }
+    .welcome .icon { font-size: 48px; margin-bottom: 12px; }
+    .welcome h2 { font-size: 20px; color: #333; margin-bottom: 8px; }
+    .welcome p { font-size: 14px; line-height: 1.6; }
+    .quick-questions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 20px;
+    }
+    .quick-btn {
+      background: #fff;
+      border: 1px solid #d0d7e3;
+      border-radius: 20px;
+      padding: 7px 16px;
+      font-size: 13px;
+      cursor: pointer;
+      color: #0a6ed1;
+      transition: all .15s;
+    }
+    .quick-btn:hover { background: #e8f0fb; border-color: #0a6ed1; }
+
+    /* 消息气泡 */
+    .msg { display: flex; gap: 10px; max-width: 780px; }
+    .msg.user { flex-direction: row-reverse; align-self: flex-end; }
+    .msg.bot  { align-self: flex-start; }
+
+    .avatar {
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    .msg.user .avatar { background: #0a6ed1; color: #fff; }
+    .msg.bot  .avatar { background: #e8f0fb; }
+
+    .bubble {
+      max-width: 640px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.65;
+    }
+    .msg.user .bubble {
+      background: #0a6ed1;
+      color: #fff;
+      border-bottom-right-radius: 3px;
+    }
+    .msg.bot .bubble {
+      background: #fff;
+      color: #333;
+      border-bottom-left-radius: 3px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+
+    /* 引用文章 */
+    .refs {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #eee;
+      font-size: 12px;
+      color: #6c757d;
+    }
+    .refs span { font-weight: 600; }
+    .ref-tag {
+      display: inline-block;
+      background: #f0f4ff;
+      color: #0a6ed1;
+      border: 1px solid #c8d8f5;
+      border-radius: 4px;
+      padding: 2px 8px;
+      margin: 3px 3px 0 0;
+      font-size: 12px;
+    }
+
+    /* 评分 */
+    .rating {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #999;
+    }
+    .star {
+      cursor: pointer;
+      font-size: 16px;
+      color: #ddd;
+      transition: color .1s;
+    }
+    .star:hover, .star.active { color: #f5a623; }
+    .rating-done { font-size: 12px; color: #52c41a; }
+
+    /* 加载动画 */
+    .typing { display: flex; gap: 4px; align-items: center; padding: 4px 0; }
+    .typing span {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #adb5bd;
+      animation: bounce .8s infinite;
+    }
+    .typing span:nth-child(2) { animation-delay: .15s; }
+    .typing span:nth-child(3) { animation-delay: .3s; }
+    @keyframes bounce {
+      0%, 60%, 100% { transform: translateY(0); }
+      30%           { transform: translateY(-6px); }
+    }
+
+    /* ── 输入栏 ── */
+    .input-bar {
+      padding: 16px 32px;
+      background: #fff;
+      border-top: 1px solid #e5e5e5;
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+    textarea {
+      flex: 1;
+      border: 1px solid #d0d7e3;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 14px;
+      resize: none;
+      outline: none;
+      font-family: inherit;
+      min-height: 44px;
+      max-height: 120px;
+      line-height: 1.5;
+      transition: border-color .15s;
+    }
+    textarea:focus { border-color: #0a6ed1; box-shadow: 0 0 0 2px rgba(10,110,209,.15); }
+    .send-btn {
+      background: #0a6ed1;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      width: 44px; height: 44px;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: background .15s;
+    }
+    .send-btn:hover:not(:disabled) { background: #085cb8; }
+    .send-btn:disabled { background: #adb5bd; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🤝</div>
+  <h1>HR 助手</h1>
+  <div class="subtitle">入职知识库智能问答</div>
+</header>
+
+<div class="main">
+  <!-- 侧边栏 -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      历史对话
+      <button class="btn-new" onclick="newSession()">+ 新建</button>
+    </div>
+    <div class="session-list" id="sessionList"></div>
+  </aside>
+
+  <!-- 聊天区 -->
+  <div class="chat-area">
+    <div class="messages" id="messages">
+      <div class="welcome" id="welcome">
+        <div class="icon">👋</div>
+        <h2>你好！我是 HR 助手</h2>
+        <p>有任何入职相关的问题，直接问我吧。<br/>我会根据公司知识库为你解答。</p>
+        <div class="quick-questions">
+          <button class="quick-btn" onclick="ask('年假有几天？怎么申请？')">年假有几天？怎么申请？</button>
+          <button class="quick-btn" onclick="ask('如何申请IT设备？')">如何申请IT设备？</button>
+          <button class="quick-btn" onclick="ask('报销流程是什么？')">报销流程是什么？</button>
+          <button class="quick-btn" onclick="ask('入职第一天需要做什么？')">入职第一天需要做什么？</button>
+          <button class="quick-btn" onclick="ask('公司有哪些员工福利？')">公司有哪些员工福利？</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="input-bar">
+      <textarea
+        id="input"
+        placeholder="输入你的问题，按 Enter 发送，Shift+Enter 换行…"
+        rows="1"
+        onkeydown="handleKey(event)"
+        oninput="autoResize(this)"
+      ></textarea>
+      <button class="send-btn" id="sendBtn" onclick="sendMessage()" title="发送">➤</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = '';   // 与服务同源，空字符串即可
+let currentSessionId = null;
+let sessions = {};    // sessionId -> { title, messages[] }
+let isLoading = false;
+
+// ── 自动调整 textarea 高度 ─────────────────────────────
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+// ── 快捷问题 ──────────────────────────────────────────
+function ask(q) {
+  document.getElementById('input').value = q;
+  sendMessage();
+}
+
+// ── Enter 发送 ────────────────────────────────────────
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+// ── 新建会话 ──────────────────────────────────────────
+function newSession() {
+  currentSessionId = null;
+  document.getElementById('messages').innerHTML = '';
+  document.getElementById('messages').appendChild(createWelcome());
+  document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
+}
+
+function createWelcome() {
+  const div = document.createElement('div');
+  div.className = 'welcome';
+  div.id = 'welcome';
+  div.innerHTML = `
+    <div class="icon">👋</div>
+    <h2>你好！我是 HR 助手</h2>
+    <p>有任何入职相关的问题，直接问我吧。<br/>我会根据公司知识库为你解答。</p>
+    <div class="quick-questions">
+      <button class="quick-btn" onclick="ask('年假有几天？怎么申请？')">年假有几天？怎么申请？</button>
+      <button class="quick-btn" onclick="ask('如何申请IT设备？')">如何申请IT设备？</button>
+      <button class="quick-btn" onclick="ask('报销流程是什么？')">报销流程是什么？</button>
+      <button class="quick-btn" onclick="ask('入职第一天需要做什么？')">入职第一天需要做什么？</button>
+      <button class="quick-btn" onclick="ask('公司有哪些员工福利？')">公司有哪些员工福利？</button>
+    </div>`;
+  return div;
+}
+
+// ── 发送消息 ──────────────────────────────────────────
+async function sendMessage() {
+  if (isLoading) return;
+  const input = document.getElementById('input');
+  const question = input.value.trim();
+  if (!question) return;
+
+  // 清除欢迎语
+  const welcome = document.getElementById('welcome');
+  if (welcome) welcome.remove();
+
+  input.value = '';
+  input.style.height = 'auto';
+
+  appendUserMsg(question);
+  const typingEl = appendTyping();
+  setLoading(true);
+
+  try {
+    const body = { question };
+    if (currentSessionId) body.sessionId = currentSessionId;
+
+    const res = await fetch(`${API_BASE}/api/askQuestion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    currentSessionId = data.value?.sessionId || data.sessionId;
+    const answer     = data.value?.answer     || data.answer     || '抱歉，未能获取到回答。';
+    const refs       = data.value?.referencedArticles || data.referencedArticles || [];
+    const messageId  = data.value?.messageId  || data.messageId;
+
+    typingEl.remove();
+    appendBotMsg(answer, refs, messageId);
+    updateSessionSidebar(currentSessionId, question);
+
+  } catch (err) {
+    typingEl.remove();
+    appendBotMsg(`❌ 出错了：${err.message}`, [], null);
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ── DOM 辅助 ──────────────────────────────────────────
+function appendUserMsg(text) {
+  const el = document.createElement('div');
+  el.className = 'msg user';
+  el.innerHTML = `
+    <div class="avatar">👤</div>
+    <div class="bubble">${escHtml(text)}</div>`;
+  getMessages().appendChild(el);
+  scrollBottom();
+}
+
+function appendTyping() {
+  const el = document.createElement('div');
+  el.className = 'msg bot';
+  el.innerHTML = `
+    <div class="avatar">🤝</div>
+    <div class="bubble">
+      <div class="typing"><span></span><span></span><span></span></div>
+    </div>`;
+  getMessages().appendChild(el);
+  scrollBottom();
+  return el;
+}
+
+function appendBotMsg(answer, refs, messageId) {
+  const el = document.createElement('div');
+  el.className = 'msg bot';
+
+  // 引用文章
+  let refsHtml = '';
+  if (refs && refs.length > 0) {
+    const tags = refs.map(r => `<span class="ref-tag">📄 ${escHtml(r.title)}</span>`).join('');
+    refsHtml = `<div class="refs"><span>参考文章：</span>${tags}</div>`;
+  }
+
+  // 评分
+  let ratingHtml = '';
+  if (messageId) {
+    ratingHtml = `
+      <div class="rating" id="rating-${messageId}">
+        这个回答有帮助吗？
+        ${[1,2,3,4,5].map(n =>
+          `<span class="star" onclick="rate('${messageId}', ${n})" data-score="${n}">★</span>`
+        ).join('')}
+      </div>`;
+  }
+
+  el.innerHTML = `
+    <div class="avatar">🤝</div>
+    <div class="bubble">
+      ${md2html(answer)}
+      ${refsHtml}
+      ${ratingHtml}
+    </div>`;
+  getMessages().appendChild(el);
+  scrollBottom();
+}
+
+// ── 评分 ──────────────────────────────────────────────
+async function rate(messageId, score) {
+  const container = document.getElementById(`rating-${messageId}`);
+  if (!container) return;
+  try {
+    await fetch(`${API_BASE}/api/rateAnswer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messageId, rating: score }),
+    });
+    container.innerHTML = `<span class="rating-done">✓ 感谢你的反馈！${'★'.repeat(score)}</span>`;
+  } catch {
+    container.innerHTML = `<span class="rating-done">评分失败，请稍后再试</span>`;
+  }
+}
+
+// ── 侧边栏更新 ────────────────────────────────────────
+function updateSessionSidebar(sessionId, title) {
+  if (!sessionId) return;
+  if (!sessions[sessionId]) {
+    sessions[sessionId] = { title: title.slice(0, 30) };
+    const list = document.getElementById('sessionList');
+    const item = document.createElement('div');
+    item.className = 'session-item active';
+    item.id = `sess-${sessionId}`;
+    item.textContent = sessions[sessionId].title;
+    item.onclick = () => switchSession(sessionId);
+    list.prepend(item);
+  }
+  document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
+  const cur = document.getElementById(`sess-${sessionId}`);
+  if (cur) cur.classList.add('active');
+}
+
+function switchSession(sessionId) {
+  // 简单实现：切换高亮，清空聊天区（完整实现需从后端加载历史消息）
+  currentSessionId = sessionId;
+  document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
+  document.getElementById(`sess-${sessionId}`)?.classList.add('active');
+  const msgs = document.getElementById('messages');
+  msgs.innerHTML = `<div style="text-align:center;padding:32px;color:#aaa;font-size:13px;">已切换到该会话，继续提问吧 👆</div>`;
+}
+
+// ── 工具函数 ──────────────────────────────────────────
+function getMessages() { return document.getElementById('messages'); }
+function scrollBottom() {
+  const m = getMessages();
+  m.scrollTop = m.scrollHeight;
+}
+function setLoading(v) {
+  isLoading = v;
+  document.getElementById('sendBtn').disabled = v;
+  document.getElementById('input').disabled = v;
+}
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// 极简 Markdown → HTML（支持 ## 标题、**加粗**、- 列表、换行）
+function md2html(text) {
+  return escHtml(text)
+    .replace(/^## (.+)$/gm, '<strong style="display:block;margin-top:8px">$1</strong>')
+    .replace(/^### (.+)$/gm, '<em style="display:block;margin-top:6px;font-style:normal;font-weight:600">$1</em>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^- (.+)$/gm, '• $1')
+    .replace(/\n/g, '<br/>');
+}
+</script>
+</body>
+</html>

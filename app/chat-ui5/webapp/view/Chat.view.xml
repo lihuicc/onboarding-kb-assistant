@@ -1,0 +1,218 @@
+<mvc:View
+  controllerName="onboarding.kb.chat.controller.Chat"
+  xmlns:mvc="sap.ui.core.mvc"
+  xmlns="sap.m"
+  xmlns:core="sap.ui.core"
+  displayBlock="true">
+
+  <App id="chatApp">
+
+    <!-- ── 侧边栏（Master Page） ── -->
+    <pages>
+      <Page
+        id="masterPage"
+        title="历史对话"
+        backgroundDesign="Solid">
+        <customHeader>
+          <Bar>
+            <contentLeft>
+              <Title text="历史对话" titleStyle="H5" />
+            </contentLeft>
+            <contentRight>
+              <Button text="+ 新建" type="Emphasized" press=".onNewSession" />
+            </contentRight>
+          </Bar>
+        </customHeader>
+        <List
+          id="sessionList"
+          items="{chat>/sessions}"
+          mode="SingleSelectMaster"
+          selectionChange=".onSessionSelect"
+          noDataText="暂无历史对话">
+          <StandardListItem
+            title="{chat>title}"
+            description="{chat>createdAt}"
+            type="Active" />
+        </List>
+      </Page>
+
+      <!-- ── 聊天主页面 ── -->
+      <Page
+        id="chatPage"
+        backgroundDesign="List"
+        enableScrolling="true">
+
+        <customHeader>
+          <Bar>
+            <contentLeft>
+              <Button
+                icon="sap-icon://menu2"
+                press=".onToggleSidebar"
+                type="Transparent" />
+              <Title text="🤝 HR 助手" titleStyle="H4" />
+            </contentLeft>
+            <contentRight>
+              <Text text="入职知识库智能问答" class="sapUiTinyMarginEnd" />
+            </contentRight>
+          </Bar>
+        </customHeader>
+
+        <content>
+          <!-- 欢迎区（无消息时显示） -->
+          <VBox
+            id="welcomeBox"
+            visible="{= ${chat>/messages}.length === 0 }"
+            alignItems="Center"
+            class="sapUiLargeMarginTop sapUiMediumMarginBeginEnd">
+            <items>
+              <Title text="👋 你好！我是 HR 助手" titleStyle="H2" class="sapUiSmallMarginBottom" />
+              <Text
+                text="有任何入职相关的问题，直接问我吧。&#xa;我会根据公司知识库为你解答。"
+                textAlign="Center"
+                class="sapUiSmallMarginBottom" />
+              <FlexBox wrap="Wrap" justifyContent="Center" class="sapUiSmallMarginTop">
+                <items>
+                  <Button text="年假有几天？怎么申请？"   type="Ghost" press=".onQuickAsk" class="sapUiTinyMargin" />
+                  <Button text="如何申请IT设备？"         type="Ghost" press=".onQuickAsk" class="sapUiTinyMargin" />
+                  <Button text="报销流程是什么？"         type="Ghost" press=".onQuickAsk" class="sapUiTinyMargin" />
+                  <Button text="入职第一天需要做什么？"   type="Ghost" press=".onQuickAsk" class="sapUiTinyMargin" />
+                  <Button text="公司有哪些员工福利？"     type="Ghost" press=".onQuickAsk" class="sapUiTinyMargin" />
+                </items>
+              </FlexBox>
+            </items>
+          </VBox>
+
+          <!-- 消息列表 -->
+          <List
+            id="messageList"
+            items="{chat>/messages}"
+            showSeparators="None"
+            backgroundDesign="Transparent">
+            <items>
+              <CustomListItem>
+
+                <!-- 用户消息（右对齐） -->
+                <FlexBox
+                  visible="{= ${chat>role} === 'user' }"
+                  justifyContent="End"
+                  class="sapUiSmallMarginBeginEnd sapUiTinyMarginTopBottom">
+                  <items>
+                    <VBox>
+                      <items>
+                        <Panel class="chatBubbleUser">
+                          <content>
+                            <Text text="{chat>text}" wrapping="true" class="sapUiSmallMarginBeginEnd sapUiTinyMarginTopBottom" />
+                          </content>
+                        </Panel>
+                      </items>
+                    </VBox>
+                    <core:Icon
+                      src="sap-icon://person-placeholder"
+                      size="2rem"
+                      class="sapUiTinyMarginBegin sapUiSmallMarginTop" />
+                  </items>
+                </FlexBox>
+
+                <!-- 助手消息（左对齐） -->
+                <FlexBox
+                  visible="{= ${chat>role} === 'assistant' }"
+                  justifyContent="Start"
+                  class="sapUiSmallMarginBeginEnd sapUiTinyMarginTopBottom">
+                  <items>
+                    <core:Icon
+                      src="sap-icon://customer-briefing"
+                      size="2rem"
+                      color="var(--sapBrandColor)"
+                      class="sapUiTinyMarginEnd sapUiSmallMarginTop" />
+                    <VBox>
+                      <items>
+                        <Panel class="chatBubbleBot">
+                          <content>
+                            <FormattedText
+                              htmlText="{chat>html}"
+                              class="sapUiSmallMarginBeginEnd sapUiTinyMarginTopBottom" />
+                          </content>
+                        </Panel>
+                        <RatingIndicator
+                          visible="{= !!${chat>messageId} &amp;&amp; !${chat>rated} }"
+                          maxValue="5"
+                          value="0"
+                          iconSize="1.2rem"
+                          change=".onRate"
+                          class="sapUiTinyMarginTop" />
+                        <Text
+                          visible="{= !!${chat>rated} }"
+                          text="✓ 感谢反馈！"
+                          class="sapUiTinyMarginTop" />
+                      </items>
+                    </VBox>
+                  </items>
+                </FlexBox>
+
+                <!-- 加载中 -->
+                <FlexBox
+                  visible="{= ${chat>role} === 'typing' }"
+                  justifyContent="Start"
+                  class="sapUiSmallMarginBeginEnd sapUiTinyMarginTopBottom">
+                  <items>
+                    <core:Icon
+                      src="sap-icon://customer-briefing"
+                      size="2rem"
+                      color="var(--sapBrandColor)"
+                      class="sapUiTinyMarginEnd sapUiSmallMarginTop" />
+                    <BusyIndicator class="sapUiSmallMarginTop" />
+                  </items>
+                </FlexBox>
+
+              </CustomListItem>
+            </items>
+          </List>
+        </content>
+
+        <!-- 输入栏 -->
+        <footer>
+          <Toolbar>
+            <TextArea
+              id="inputArea"
+              value="{chat>/inputText}"
+              placeholder="输入你的问题，按 Ctrl+Enter 发送…"
+              rows="2"
+              growing="true"
+              growingMaxLines="4"
+              width="100%"
+              enabled="{= !${chat>/busy} }" />
+            <ToolbarSpacer width="8px" />
+            <Button
+              id="sendBtn"
+              icon="sap-icon://paper-plane"
+              type="Emphasized"
+              enabled="{= !${chat>/busy} }"
+              press=".onSend"
+              tooltip="发送" />
+          </Toolbar>
+        </footer>
+      </Page>
+    </pages>
+
+  </App>
+
+  <html:style xmlns:html="http://www.w3.org/1999/xhtml">
+    .chatBubbleUser {
+      background: var(--sapButton_Emphasized_Background) !important;
+      border-radius: 12px 12px 3px 12px !important;
+      border: none !important;
+      max-width: 70vw;
+    }
+    .chatBubbleUser .sapMText {
+      color: var(--sapButton_Emphasized_TextColor) !important;
+    }
+    .chatBubbleBot {
+      background: var(--sapBaseColor) !important;
+      border-radius: 12px 12px 12px 3px !important;
+      box-shadow: var(--sapContent_Shadow0) !important;
+      border: none !important;
+      max-width: 75vw;
+    }
+  </html:style>
+
+</mvc:View>

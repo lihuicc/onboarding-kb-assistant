@@ -1,0 +1,9 @@
+{
+  "name": "chat-ui5",
+  "version": "1.0.0",
+  "description": "HR 助手聊天页 - SAPUI5",
+  "devDependencies": {
+    "@sap/ux-ui5-tooling": "^1",
+    "@ui5/cli": "^4"
+  }
+}

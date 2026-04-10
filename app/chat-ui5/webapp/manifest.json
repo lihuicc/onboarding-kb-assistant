@@ -1,0 +1,39 @@
+{
+  "_version": "1.49.0",
+  "sap.app": {
+    "id": "onboarding.kb.chat",
+    "type": "application",
+    "title": "{{appTitle}}",
+    "description": "{{appDescription}}",
+    "applicationVersion": { "version": "1.0.0" },
+    "i18n": "i18n/i18n.properties"
+  },
+  "sap.ui": {
+    "technology": "UI5",
+    "fullWidth": true
+  },
+  "sap.ui5": {
+    "rootView": {
+      "viewName": "onboarding.kb.chat.view.Chat",
+      "type": "XML",
+      "async": true,
+      "id": "chat"
+    },
+    "dependencies": {
+      "minUI5Version": "1.120.0",
+      "libs": {
+        "sap.m": {},
+        "sap.ui.core": {},
+        "sap.ui.layout": {}
+      }
+    },
+    "models": {
+      "i18n": {
+        "type": "sap.ui.model.resource.ResourceModel",
+        "settings": {
+          "bundleName": "onboarding.kb.chat.i18n.i18n"
+        }
+      }
+    }
+  }
+}
