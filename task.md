@@ -15,6 +15,7 @@
 | Task 3 | AI 集成 | Claude client 封装、RAG 检索逻辑、Prompt 设计 | `srv/lib/claude-client.js`，问答流程端到端跑通 |
 | Task 4 | 知识库管理 UI | Fiori Elements List Report + Object Page、CRUD、ValueHelp | `app/kb-manager/`，HR 可完整管理文章 |
 | Task 5 | 员工聊天 UI | SAPUI5 聊天页、会话管理、消息气泡、评分 | `app/chat-ui5/`，员工可完整使用问答 |
+| Task 6 | 部署到 SAP BTP | MTA 打包、XSUAA 鉴权、SAP HANA Cloud、CF 部署 | 应用在 BTP Cloud Foundry 上线运行 |
 
 ---
 
@@ -1183,3 +1184,353 @@ Task 1（基础）────────────────────�
 - Fiori Elements 应用（kb-manager）Component 继承 `sap/fe/core/AppComponent`
 - Freestyle 应用（chat-ui5）Component 继承 `sap/ui/core/UIComponent`
 - JSONModel 在 Controller `onInit` 中初始化，不在 manifest 中配置
+
+---
+
+## Task 6 — 部署到 SAP BTP
+
+**负责开发者：** 熟悉 SAP BTP、Cloud Foundry、MTA 部署，有 XSUAA / SAP HANA Cloud 经验  
+**依赖关系：** 依赖所有前置任务（Task 1-5）全部完成并在本地验证通过
+
+### 目标
+
+将完整的应用程序打包并部署到 SAP BTP Cloud Foundry 运行时，包括后端 CAP 服务、前端 UI 应用、SAP HANA Cloud 数据库，以及 XSUAA 鉴权配置。
+
+### 详细任务
+
+#### 6.1 准备 BTP 环境
+
+在 SAP BTP Cockpit 中确认以下服务实例已就绪：
+
+- **SAP HANA Cloud**：创建 HANA Cloud 实例（HDI Container）
+- **Authorization and Trust Management (XSUAA)**：创建服务实例（plan: `application`）
+- **SAP Build Work Zone / Launchpad Service**（可选）：用于统一入口
+
+```bash
+# 登录 CF 环境
+cf login -a https://api.cf.<region>.hana.ondemand.com
+cf target -o <your-org> -s <your-space>
+```
+
+#### 6.2 添加 HANA Cloud 支持
+
+安装 CAP HANA 插件：
+
+```bash
+npm install --save-dev @cap-js/hana
+```
+
+在 `package.json` 中添加生产环境数据库配置：
+
+```json
+{
+  "cds": {
+    "requires": {
+      "db": {
+        "[production]": {
+          "kind": "hana"
+        }
+      }
+    }
+  }
+}
+```
+
+生成 HANA 部署工件：
+
+```bash
+cds build --production
+```
+
+#### 6.3 配置 XSUAA（xs-security.json）
+
+新建 `xs-security.json`：
+
+```json
+{
+  "xsappname": "onboarding-kb-assistant",
+  "tenant-mode": "dedicated",
+  "description": "员工入职知识库问答助手",
+  "scopes": [
+    {
+      "name": "$XSAPPNAME.admin",
+      "description": "HR 管理员权限"
+    },
+    {
+      "name": "$XSAPPNAME.user",
+      "description": "普通员工权限"
+    }
+  ],
+  "role-templates": [
+    {
+      "name": "KBAdmin",
+      "description": "知识库管理员",
+      "scope-references": ["$XSAPPNAME.admin"]
+    },
+    {
+      "name": "KBUser",
+      "description": "知识库用户",
+      "scope-references": ["$XSAPPNAME.user"]
+    }
+  ],
+  "role-collections": [
+    {
+      "name": "KB_Admin",
+      "description": "知识库管理员角色集合",
+      "role-template-references": ["$XSAPPNAME.KBAdmin"]
+    },
+    {
+      "name": "KB_User",
+      "description": "知识库用户角色集合",
+      "role-template-references": ["$XSAPPNAME.KBUser"]
+    }
+  ],
+  "oauth2-configuration": {
+    "redirect-uris": ["https://*.cfapps.<region>.hana.ondemand.com/**"]
+  }
+}
+```
+
+#### 6.4 配置 MTA 描述文件（mta.yaml）
+
+新建 `mta.yaml`（Multi-Target Application 核心配置文件）：
+
+```yaml
+_schema-version: "3.1"
+ID: onboarding-kb-assistant
+description: 员工入职知识库问答助手
+version: 1.0.0
+
+modules:
+  # ─── CAP 后端服务 ───────────────────────────────────────
+  - name: onboarding-kb-srv
+    type: nodejs
+    path: gen/srv
+    requires:
+      - name: onboarding-kb-db
+      - name: onboarding-kb-auth
+      - name: onboarding-kb-anthropic-credentials
+    provides:
+      - name: srv-api
+        properties:
+          srv-url: ${default-url}
+    parameters:
+      buildpack: nodejs_buildpack
+      disk-quota: 512M
+      memory: 512M
+    build-parameters:
+      builder: npm
+
+  # ─── HANA 数据库部署器 ──────────────────────────────────
+  - name: onboarding-kb-db-deployer
+    type: hdb
+    path: gen/db
+    requires:
+      - name: onboarding-kb-db
+    parameters:
+      buildpack: nodejs_buildpack
+
+  # ─── kb-manager Fiori UI ───────────────────────────────
+  - name: onboarding-kb-kb-manager
+    type: html5
+    path: app/kb-manager
+    build-parameters:
+      build-result: dist
+      builder: custom
+      commands:
+        - npm install
+        - npm run build
+      supported-platforms: []
+
+  # ─── chat-ui5 员工聊天 UI ──────────────────────────────
+  - name: onboarding-kb-chat-ui5
+    type: html5
+    path: app/chat-ui5
+    build-parameters:
+      build-result: dist
+      builder: custom
+      commands:
+        - npm install
+        - npm run build
+      supported-platforms: []
+
+  # ─── App Router（统一入口，处理鉴权跳转）──────────────
+  - name: onboarding-kb-approuter
+    type: approuter.nodejs
+    path: approuter
+    requires:
+      - name: onboarding-kb-auth
+      - name: srv-api
+        group: destinations
+        properties:
+          name: srv-api
+          url: ~{srv-url}
+          forwardAuthToken: true
+    parameters:
+      disk-quota: 256M
+      memory: 256M
+
+resources:
+  # ─── SAP HANA Cloud HDI Container ─────────────────────
+  - name: onboarding-kb-db
+    type: com.sap.xs.hdi-container
+    parameters:
+      service: hana
+      service-plan: hdi-shared
+
+  # ─── XSUAA 鉴权 ────────────────────────────────────────
+  - name: onboarding-kb-auth
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: ./xs-security.json
+      config:
+        xsappname: onboarding-kb-assistant-${org}-${space}
+        tenant-mode: dedicated
+
+  # ─── Anthropic API Key（User-Provided Service）────────
+  - name: onboarding-kb-anthropic-credentials
+    type: org.cloudfoundry.user-provided-service
+    parameters:
+      credentials:
+        ANTHROPIC_API_KEY: <your-api-key>
+        ANTHROPIC_BASE_URL: <your-proxy-url-or-empty>
+```
+
+#### 6.5 配置 App Router
+
+新建 `approuter/` 目录并创建以下文件：
+
+`approuter/package.json`：
+```json
+{
+  "name": "onboarding-kb-approuter",
+  "version": "1.0.0",
+  "dependencies": {
+    "@sap/approuter": "^14"
+  }
+}
+```
+
+`approuter/xs-app.json`：
+```json
+{
+  "welcomeFile": "/chat-ui5/index.html",
+  "authenticationMethod": "route",
+  "routes": [
+    {
+      "source": "^/kb-manager/(.*)$",
+      "target": "/kb-manager/$1",
+      "service": "html5-apps-repo-rt",
+      "authenticationType": "xsuaa"
+    },
+    {
+      "source": "^/chat-ui5/(.*)$",
+      "target": "/chat-ui5/$1",
+      "service": "html5-apps-repo-rt",
+      "authenticationType": "xsuaa"
+    },
+    {
+      "source": "^/admin/(.*)$",
+      "target": "/admin/$1",
+      "destination": "srv-api",
+      "authenticationType": "xsuaa",
+      "csrfProtection": false
+    },
+    {
+      "source": "^/api/(.*)$",
+      "target": "/api/$1",
+      "destination": "srv-api",
+      "authenticationType": "xsuaa",
+      "csrfProtection": false
+    }
+  ]
+}
+```
+
+#### 6.6 添加 CAP BTP 鉴权配置
+
+在 `srv/knowledge-service.cds` 中为服务添加鉴权注解：
+
+```cds
+service AdminService @(
+  path     : '/admin',
+  requires : 'admin'    // 只有 KB_Admin 角色可访问
+) { ... }
+
+service KnowledgeService @(
+  path     : '/api',
+  requires : 'user'     // KB_User 角色可访问
+) { ... }
+```
+
+在 `package.json` 中配置生产环境鉴权：
+
+```json
+{
+  "cds": {
+    "requires": {
+      "auth": {
+        "[production]": {
+          "kind": "xsuaa"
+        }
+      }
+    }
+  }
+}
+```
+
+#### 6.7 构建并部署
+
+```bash
+# 安装 MTA 构建工具
+npm install -g mbt
+
+# 构建 MTA 归档包
+mbt build -t ./
+
+# 安装 CF MTA 插件（如未安装）
+cf install-plugin multiapps
+
+# 部署到 BTP Cloud Foundry
+cf deploy onboarding-kb-assistant_1.0.0.mtar
+```
+
+#### 6.8 部署后配置
+
+1. **分配角色集合**：在 BTP Cockpit → Security → Role Collections 中，将 `KB_Admin` 和 `KB_User` 分配给对应用户或用户组
+
+2. **配置 Anthropic API Key**（如未在 mta.yaml 中硬编码）：
+```bash
+cf update-user-provided-service onboarding-kb-anthropic-credentials \
+  -p '{"ANTHROPIC_API_KEY":"sk-ant-xxx","ANTHROPIC_BASE_URL":"http://your-proxy"}'
+cf restart onboarding-kb-srv
+```
+
+3. **验证部署状态**：
+```bash
+cf apps        # 查看所有 module 运行状态
+cf services    # 查看服务绑定状态
+cf logs onboarding-kb-srv --recent  # 查看启动日志
+```
+
+#### 6.9 常见问题与解决方案
+
+| 问题 | 原因 | 解决方案 |
+|------|------|---------|
+| HANA 部署失败 | HDI Container 未创建或权限不足 | 在 BTP Cockpit 确认 HANA Cloud 实例状态，检查 HDI Container 绑定 |
+| XSUAA token 验证失败 | `xs-security.json` 中 `xsappname` 与服务实例不匹配 | 确保 mta.yaml 和 xs-security.json 中的 `xsappname` 一致 |
+| App Router 返回 401 | 路由未配置正确的 `authenticationType` | 检查 `xs-app.json` 中各路由的鉴权配置 |
+| CAP 服务无法连接 HANA | `gen/` 目录未生成或 `cds build` 未执行 | 重新执行 `cds build --production` 后再 `mbt build` |
+| Anthropic API 调用失败 | BTP 环境无法访问外部 API 或 Key 未注入 | 检查 User-Provided Service 中的凭据，确认网络出口策略 |
+| UI 应用 404 | HTML5 应用未正确注册到 App Router | 检查 `approuter/xs-app.json` 路由配置和 `mta.yaml` module 定义 |
+
+#### 6.10 验收标准
+
+- `cf apps` 显示所有 module（srv、approuter、db-deployer）状态为 `started`
+- 访问 App Router 入口 URL 触发 XSUAA 登录页
+- 登录后员工可访问 `/chat-ui5/index.html` 正常使用问答功能
+- HR 管理员可访问 `/kb-manager/index.html` 进行文章管理
+- HANA Cloud 中数据持久化，重启后数据不丢失
+- Claude API 在 BTP 环境中调用成功，返回真实 AI 回答
