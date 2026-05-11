@@ -1,0 +1,40 @@
+{
+  "welcomeFile": "/chat-ui5/index.html",
+  "authenticationMethod": "route",
+  "logout": {
+    "logoutEndpoint": "/do/logout",
+    "logoutPage": "/chat-ui5/index.html"
+  },
+  "routes": [
+    {
+      "source": "^/kb-manager/(.*)$",
+      "target": "/kbmanager/$1",
+      "service": "html5-apps-repo-rt",
+      "authenticationType": "xsuaa",
+      "scope": ["$XSAPPNAME.admin"]
+    },
+    {
+      "source": "^/chat-ui5/(.*)$",
+      "target": "/onboardingkbchat/$1",
+      "service": "html5-apps-repo-rt",
+      "authenticationType": "xsuaa",
+      "scope": ["$XSAPPNAME.user"]
+    },
+    {
+      "source": "^/admin/(.*)",
+      "target": "/admin/$1",
+      "destination": "onboarding-kb-srv",
+      "authenticationType": "xsuaa",
+      "scope": ["$XSAPPNAME.admin"],
+      "csrfProtection": true
+    },
+    {
+      "source": "^/api/(.*)",
+      "target": "/api/$1",
+      "destination": "onboarding-kb-srv",
+      "authenticationType": "xsuaa",
+      "scope": ["$XSAPPNAME.user"],
+      "csrfProtection": false
+    }
+  ]
+}

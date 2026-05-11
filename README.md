@@ -29,9 +29,47 @@ npm install
 
 ```bash
 cp .env.example .env
-# 编辑 .env，填入以下内容：
-# ANTHROPIC_API_KEY=your-key-here
-# ANTHROPIC_BASE_URL=your-proxy-url  （可选，如有公司代理）
+# 按下方说明编辑 .env
+```
+
+`.env` 完整说明：
+
+```env
+# ── AI Provider ──────────────────────────────────────────────────────────
+# 可选值：
+#   anthropic     本地直连 Anthropic（默认，开发用）
+#   aicore        SAP AI Core Generative AI Hub（BTP 生产）
+#   orchestration SAP AI Core Orchestration Service（BTP 生产，含过滤/Grounding，推荐）
+AI_PROVIDER=anthropic
+
+# ── Anthropic 直连（AI_PROVIDER=anthropic 时使用）─────────────────────────
+ANTHROPIC_API_KEY=sk-ant-api03-xxxxxxxx
+ANTHROPIC_BASE_URL=http://localhost:6655/anthropic   # 公司代理，可选
+CLAUDE_MODEL=claude-sonnet-4-6                       # 可选，默认 claude-sonnet-4-6
+
+# ── SAP AI Core（AI_PROVIDER=aicore 或 orchestration 时使用）─────────────
+# SDK 优先读取 AICORE_SERVICE_KEY（JSON 字符串），其次读 VCAP_SERVICES.aicore
+AICORE_SERVICE_KEY={"clientid":"...","clientsecret":"...","url":"...","serviceurls":{"AI_API_URL":"..."}}
+AICORE_RESOURCE_GROUP=onboarding-kb-assistant        # AI Launchpad 中的 Resource Group 名称
+
+# AI_PROVIDER=aicore 时额外需要：
+AICORE_DEPLOYMENT_ID=d1234567890abcdef               # ML Operations → Deployments 中的 ID
+
+# AI_PROVIDER=orchestration 时额外需要：
+AICORE_ORCHESTRATION_CONFIG_ID=orch-config-xxxxx     # Generative AI Hub → Orchestration 中的 Config ID
+
+# ── Document Grounding（AI_PROVIDER=orchestration 时可选）────────────────
+# 设为 true 后，Orchestration 会在 Resource Group 下的所有 Data Repository 中做向量检索
+# 同时启用文章变更自动同步到 Object Store 的功能
+AICORE_GROUNDING_ENABLED=true
+
+# ── BTP Object Store（AICORE_GROUNDING_ENABLED=true 时需要）─────────────
+# 从 BTP 控制台 → Object Store 实例 → Service Key 中获取
+OS_ACCESS_KEY_ID=AKIAXXXXXXXXXXXXXXXX
+OS_SECRET_ACCESS_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+OS_BUCKET=hcp-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+OS_HOST=s3-eu-central-1.amazonaws.com
+OS_REGION=eu-central-1
 ```
 
 ### 3. 初始化数据库
@@ -95,44 +133,33 @@ onboarding-kb-assistant/
 ├── db/
 │   ├── schema.cds                          # 数据模型
 │   └── data/
-│       ├── onboarding.kb-Categories.csv    # 分类种子数据（5条，UUID 主键）
-│       └── onboarding.kb-KnowledgeArticles.csv  # 文章种子数据（6篇，UUID 主键）
+│       ├── onboarding.kb-Categories.csv    # 分类种子数据
+│       └── onboarding.kb-KnowledgeArticles.csv  # 文章种子数据
 ├── srv/
 │   ├── knowledge-service.cds              # Service 定义（AdminService + KnowledgeService）
-│   ├── knowledge-service.js               # Service Handler（全部使用 raw SQL）
+│   ├── knowledge-service.js               # Service Handler
 │   └── lib/
-│       └── claude-client.js               # Claude API 封装（支持 baseURL 代理）
+│       ├── claude-client.js               # AI 调用入口（支持 anthropic / aicore / orchestration）
+│       ├── orchestration-client.js        # SAP Orchestration Service 封装
+│       └── objectstore-client.js          # BTP Object Store 上传/删除封装（文章自动同步）
 ├── app/
 │   ├── services.cds                       # CAP 扫描入口
-│   ├── chat/
-│   │   └── index.html                     # 员工问答聊天页（纯 HTML/CSS/JS）
 │   ├── chat-ui5/                          # 员工问答聊天页（SAPUI5 版）
-│   │   ├── ui5.yaml
-│   │   ├── package.json
-│   │   └── webapp/
-│   │       ├── manifest.json
-│   │       ├── Component.js
-│   │       ├── index.html
-│   │       ├── view/Chat.view.xml
-│   │       ├── controller/Chat.controller.js
-│   │       └── i18n/i18n.properties
 │   └── kb-manager/                        # 知识库管理（Fiori Elements）
-│       ├── annotations.cds                # UI 注解（含 ValueHelp、CRUD 能力）
-│       ├── ui5.yaml
-│       ├── package.json
-│       └── webapp/
-│           ├── manifest.json
-│           ├── Component.js
-│           ├── index.html
-│           └── i18n/i18n.properties
+├── scripts/
+│   ├── export-articles.js                 # 从 CSV 批量导出文章为 txt（手动初始化用）
+│   └── upload-to-objectstore.js           # 批量上传 txt 到 Object Store（手动初始化用）
+├── docs/
+│   └── grounding/                         # 导出的文章 txt 文件（gitignored）
 ├── test/
-│   ├── quick-test.js                      # Claude API 连通性快速测试
+│   ├── quick-test.js                      # AI 连通性快速测试
 │   └── claude-client.test.js              # 单元测试
-├── db.sqlite                              # SQLite 持久化数据库（gitignored）
+├── BTP_DEPLOYMENT_GUIDE.md                # BTP 完整部署指南
+├── db.sqlite                              # SQLite 本地数据库（gitignored）
+├── default-env.json                       # 本地 VCAP_SERVICES 模拟（gitignored）
 ├── .env                                   # 本地环境变量（gitignored）
 ├── .env.example
-├── package.json
-└── README.md
+└── package.json
 ```
 
 ## 数据持久化说明

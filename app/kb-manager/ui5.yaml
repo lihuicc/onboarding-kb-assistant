@@ -4,6 +4,23 @@ specVersion: "4.0"
 metadata:
   name: kbmanager
 type: application
+framework:
+  name: SAPUI5
+  version: "1.120.0"
+  libraries:
+    - name: sap.m
+    - name: sap.ui.core
+    - name: sap.fe.templates
+    - name: sap.ui.layout
+builder:
+  customTasks:
+    - name: ui5-task-zipper
+      afterTask: generateResourcesJson
+      configuration:
+        archiveName: kbmanager
+        includeAsArchive: true
+        additionalFiles:
+          - xs-app.json
 server:
   customMiddleware:
     - name: fiori-tools-proxy

@@ -4,6 +4,10 @@
   "description": "HR 助手聊天页 - SAPUI5",
   "devDependencies": {
     "@sap/ux-ui5-tooling": "^1",
-    "@ui5/cli": "^4"
+    "@ui5/cli": "^4",
+    "ui5-task-zipper": "^3"
+  },
+  "scripts": {
+    "build": "npx --no ui5 build --clean-dest --dest dist && node zip-dist.mjs"
   }
 }

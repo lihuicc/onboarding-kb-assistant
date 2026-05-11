@@ -1,6 +1,7 @@
 using onboarding.kb as db from '../db/schema';
 
 // ─── HR 管理服务 ────────────────────────────────────────
+@requires: 'admin'
 service AdminService @(path: '/admin') {
 
   entity Categories      as projection on db.Categories;
@@ -21,6 +22,7 @@ service AdminService @(path: '/admin') {
 }
 
 // ─── 员工问答服务 ────────────────────────────────────────
+@requires: 'user'
 service KnowledgeService @(path: '/api') {
 
   // 知识库浏览（只读，仅显示已启用文章）

@@ -2,12 +2,65 @@
 
 const cds = require('@sap/cds');
 const { generateAnswer } = require('./lib/claude-client');
+const { upsertArticle, deleteArticle } = require('./lib/objectstore-client');
+
+const GROUNDING_ENABLED = process.env.AICORE_GROUNDING_ENABLED === 'true';
 
 module.exports = class KnowledgeService extends cds.ApplicationService {
 
   async init() {
-    // All DB operations go through raw SQL to avoid service-layer projection constraints
     const db = await cds.connect.to('db');
+    const { KnowledgeArticles, ChatSessions, ChatMessages, ChatMessageArticles } = db.entities('onboarding.kb');
+
+    // ─── Object Store 自动同步（仅在 Grounding 启用时生效）────
+    if (GROUNDING_ENABLED) {
+      cds.on('served', async () => {
+        const AdminSrv = await cds.connect.to('AdminService');
+
+        AdminSrv.after(['CREATE', 'UPDATE', 'draftActivate'], 'KnowledgeArticles', async (article) => {
+          if (!article?.ID) return;
+          try {
+            const row = await SELECT.one.from(KnowledgeArticles)
+              .columns('ID', 'title', 'summary', 'tags', 'content', 'isActive')
+              .where({ ID: article.ID });
+            if (!row) return;
+            if (row.isActive) {
+              await upsertArticle(row);
+              console.log(`[objectstore] 已同步文章：${row.title}`);
+            } else {
+              await deleteArticle(row);
+              console.log(`[objectstore] 已停用文章，从 Object Store 删除：${row.title}`);
+            }
+          } catch (err) {
+            console.error(`[objectstore] 同步失败：${err.message}`);
+          }
+        });
+
+        AdminSrv.before('DELETE', 'KnowledgeArticles', async (req) => {
+          try {
+            const id = req.data?.ID ?? req.params?.[0]?.ID;
+            if (!id) return;
+            const row = await SELECT.one.from(KnowledgeArticles)
+              .columns('ID', 'title')
+              .where({ ID: id });
+            if (row) req._articleToDelete = row;
+          } catch (err) {
+            console.error(`[objectstore] 删除前查询失败：${err.message}`);
+          }
+        });
+
+        AdminSrv.after('DELETE', 'KnowledgeArticles', async (_, req) => {
+          const row = req._articleToDelete;
+          if (!row) return;
+          try {
+            await deleteArticle(row);
+            console.log(`[objectstore] 已删除文章：${row.title}`);
+          } catch (err) {
+            console.error(`[objectstore] 删除失败：${err.message}`);
+          }
+        });
+      });
+    }
 
     // ─── askQuestion Handler ─────────────────────────────
     this.on('askQuestion', async (req) => {
@@ -18,7 +71,7 @@ module.exports = class KnowledgeService extends cds.ApplicationService {
         return req.error(400, '问题不能为空');
       }
 
-      // 1. 从知识库检索相关文章（关键词匹配，直接走 SQL 避免 CQL builder 限制）
+      // 1. 从知识库检索相关文章
       const keywords = extractKeywords(question);
       let articles = [];
 
@@ -26,13 +79,11 @@ module.exports = class KnowledgeService extends cds.ApplicationService {
         const found = new Map();
         for (const kw of keywords) {
           const like = `%${kw}%`;
-          const results = await db.run(
-            `SELECT ID, title, summary, tags, content FROM onboarding_kb_KnowledgeArticles
-             WHERE isActive = 1
-               AND (title LIKE ? OR summary LIKE ? OR tags LIKE ? OR content LIKE ?)
-             LIMIT 10`,
-            [like, like, like, like]
-          );
+          const results = await SELECT.from(KnowledgeArticles)
+            .columns('ID', 'title', 'summary', 'tags', 'content')
+            .where({ isActive: true })
+            .and(`title like '${like}' or summary like '${like}' or tags like '${like}' or content like '${like}'`)
+            .limit(10);
           for (const a of results) {
             if (!found.has(a.ID)) found.set(a.ID, a);
           }
@@ -41,15 +92,15 @@ module.exports = class KnowledgeService extends cds.ApplicationService {
         articles = [...found.values()].slice(0, 5);
       }
 
-      // 如果没找到相关文章，取最新的5篇作为兜底上下文
+      // 兜底：没有匹配时取最新 5 篇
       if (articles.length === 0) {
-        articles = await db.run(
-          `SELECT ID, title, summary, tags, content FROM onboarding_kb_KnowledgeArticles
-           WHERE isActive = 1 LIMIT 5`
-        );
+        articles = await SELECT.from(KnowledgeArticles)
+          .columns('ID', 'title', 'summary', 'tags', 'content')
+          .where({ isActive: true })
+          .limit(5);
       }
 
-      // 2. 调用 Claude API
+      // 2. 调用 AI
       let aiResult;
       try {
         aiResult = await generateAnswer(question, articles);
@@ -60,28 +111,35 @@ module.exports = class KnowledgeService extends cds.ApplicationService {
 
       const { answer, referencedArticleIds, promptTokens, answerTokens } = aiResult;
 
-      // 3. 获取或创建会话（直接用 db 避免服务层投影限制）
+      // 3. 获取或创建会话
       let sessionID;
       if (sessionId) {
-        const row = await db.run(`SELECT ID FROM onboarding_kb_ChatSessions WHERE ID = ?`, [sessionId]);
-        if (!row || row.length === 0) return req.error(404, `会话 ${sessionId} 不存在`);
+        const existing = await SELECT.one.from(ChatSessions).columns('ID').where({ ID: sessionId });
+        if (!existing) return req.error(404, `会话 ${sessionId} 不存在`);
         sessionID = sessionId;
       } else {
         sessionID = cds.utils.uuid();
-        await db.run(
-          `INSERT INTO onboarding_kb_ChatSessions (ID, userId, title, status, createdAt, modifiedAt)
-           VALUES (?, ?, ?, 'ACTIVE', datetime('now'), datetime('now'))`,
-          [sessionID, userId, question.substring(0, 50)]
-        );
+        await INSERT.into(ChatSessions).entries({
+          ID: sessionID,
+          userId,
+          title: question.substring(0, 50),
+          status: 'ACTIVE',
+          createdAt: new Date(),
+          modifiedAt: new Date()
+        });
       }
 
       // 4. 保存问答消息
       const messageID = cds.utils.uuid();
-      await db.run(
-        `INSERT INTO onboarding_kb_ChatMessages (ID, session_ID, question, answer, promptTokens, answerTokens, createdAt)
-         VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
-        [messageID, sessionID, question, answer, promptTokens ?? 0, answerTokens ?? 0]
-      );
+      await INSERT.into(ChatMessages).entries({
+        ID: messageID,
+        session_ID: sessionID,
+        question,
+        answer,
+        promptTokens: promptTokens ?? 0,
+        answerTokens: answerTokens ?? 0,
+        createdAt: new Date()
+      });
 
       // 5. 保存文章引用关联
       const validArticleIds = referencedArticleIds.filter(id =>
@@ -89,15 +147,12 @@ module.exports = class KnowledgeService extends cds.ApplicationService {
       );
 
       if (validArticleIds.length > 0) {
-        for (let idx = 0; idx < validArticleIds.length; idx++) {
-          const articleId = validArticleIds[idx];
-          const relevance = parseFloat((1 - idx * 0.1).toFixed(2));
-          await db.run(
-            `INSERT INTO onboarding_kb_ChatMessageArticles (message_ID, article_ID, relevance)
-             VALUES (?, ?, ?)`,
-            [messageID, articleId, relevance]
-          );
-        }
+        const refs = validArticleIds.map((articleId, idx) => ({
+          message_ID: messageID,
+          article_ID: articleId,
+          relevance: parseFloat((1 - idx * 0.1).toFixed(2))
+        }));
+        await INSERT.into(ChatMessageArticles).entries(refs);
       }
 
       // 6. 返回结果
@@ -121,10 +176,9 @@ module.exports = class KnowledgeService extends cds.ApplicationService {
       if (rating < 1 || rating > 5) {
         return req.error(400, '评分必须在 1-5 之间');
       }
-      const result = await db.run(
-        `UPDATE onboarding_kb_ChatMessages SET rating = ? WHERE ID = ?`,
-        [rating, messageId]
-      );
+      const result = await UPDATE(ChatMessages)
+        .set({ rating })
+        .where({ ID: messageId });
       if (result === 0) {
         return req.error(404, `消息 ${messageId} 不存在`);
       }
@@ -137,7 +191,6 @@ module.exports = class KnowledgeService extends cds.ApplicationService {
 
 // ─── 工具函数 ────────────────────────────────────────────
 
-/** 从问题中提取关键词（去除停用词） */
 function extractKeywords(question) {
   const stopWords = new Set([
     '的', '是', '在', '有', '我', '怎么', '如何', '什么', '哪里', '可以',
@@ -148,5 +201,5 @@ function extractKeywords(question) {
     .replace(/[？?！!。，,；;：:""''「」【】（）()]/g, ' ')
     .split(/\s+/)
     .filter(w => w.length > 1 && !stopWords.has(w))
-    .slice(0, 8); // 最多取8个关键词
+    .slice(0, 8);
 }

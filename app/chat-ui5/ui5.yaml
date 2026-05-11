@@ -2,17 +2,26 @@ specVersion: '3.0'
 metadata:
   name: chat-ui5
 type: application
-resources:
-  configuration:
-    paths:
-      webapp: webapp
 framework:
   name: SAPUI5
-  version: '1.120.0'
+  version: "1.120.0"
   libraries:
     - name: sap.m
     - name: sap.ui.core
     - name: sap.ui.layout
+resources:
+  configuration:
+    paths:
+      webapp: webapp
+builder:
+  customTasks:
+    - name: ui5-task-zipper
+      afterTask: generateResourcesJson
+      configuration:
+        archiveName: onboarding.kb.chat
+        includeAsArchive: true
+        additionalFiles:
+          - xs-app.json
 server:
   customMiddleware:
     - name: fiori-tools-proxy
@@ -21,3 +30,8 @@ server:
         backend:
           - path: /api
             url: http://localhost:4004
+        ui5:
+          path:
+            - /resources
+            - /test-resources
+          url: https://sapui5.hana.ondemand.com

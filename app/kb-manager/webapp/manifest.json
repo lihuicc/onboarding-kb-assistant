@@ -128,12 +128,28 @@
           "options": {
             "settings": {
               "editableHeaderContent": false,
-              "contextPath": "/KnowledgeArticles"
+              "contextPath": "/KnowledgeArticles",
+              "content": {
+                "header": {
+                  "actions": {
+                    "uploadContent": {
+                      "press": "kbmanager.ext.ObjectPageExt.uploadContent",
+                      "text": "上传文档",
+                      "enabled": "{ui>/isEditable}",
+                      "visible": true
+                    }
+                  }
+                }
+              }
             }
           }
         }
       }
     }
+  },
+  "sap.cloud": {
+    "public": true,
+    "service": "kbmanager"
   },
   "sap.fiori": {
     "registrationIds": [],

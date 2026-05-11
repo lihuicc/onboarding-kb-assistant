@@ -35,5 +35,9 @@
         }
       }
     }
+  },
+  "sap.cloud": {
+    "public": true,
+    "service": "onboarding.kb.chat"
   }
 }

@@ -1,0 +1,170 @@
+_schema-version: "3.3.0"
+ID: onboarding-kb-assistant
+description: 员工入职知识库问答助手
+version: 1.0.19
+parameters:
+  deploy_mode: html5-repo
+  enable-parallel-deployments: true
+
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - node -e "const fs=require('fs');const dir='app-content';if(fs.existsSync(dir))fs.readdirSync(dir).forEach(f=>fs.rmSync(dir+'/'+f));"
+        - npm install --prefer-offline
+        - npx cds build --production
+
+# ═══════════════════════════════════════════════════════
+# MODULES
+# ═══════════════════════════════════════════════════════
+modules:
+
+  # ─── 1. CAP Node.js 后端服务 ──────────────────────────
+  - name: onboarding-kb-srv
+    type: nodejs
+    path: gen/srv
+    build-parameters:
+      ignore: ["node_modules/"]
+    parameters:
+      buildpack: nodejs_buildpack
+      memory: 256M
+      disk-quota: 512M
+    properties:
+      NODE_ENV: production
+      AI_PROVIDER: orchestration
+      AICORE_RESOURCE_GROUP: onboarding-kb-assistant
+      AICORE_GROUNDING_ENABLED: true
+    requires:
+      - name: onboarding-kb-db
+      - name: onboarding-kb-xsuaa
+      - name: onboarding-kb-aicore
+      - name: onboarding-kb-objectstore
+    provides:
+      - name: srv-api
+        properties:
+          srv-url: ${default-url}
+
+  # ─── 2. HANA DB 部署器 ────────────────────────────────
+  - name: onboarding-kb-db-deployer
+    type: hdb
+    path: gen/db
+    build-parameters:
+      ignore: ["node_modules/"]
+    parameters:
+      buildpack: nodejs_buildpack
+      memory: 256M
+      disk-quota: 512M
+    requires:
+      - name: onboarding-kb-db
+
+  # ─── 3. App Router ────────────────────────────────────
+  - name: onboarding-kb-approuter
+    type: approuter.nodejs
+    path: approuter
+    build-parameters:
+      ignore: ["node_modules/"]
+    parameters:
+      memory: 128M
+      disk-quota: 256M
+    requires:
+      - name: onboarding-kb-xsuaa
+      - name: onboarding-kb-html5-runtime
+      - name: srv-api
+        group: destinations
+        properties:
+          name: onboarding-kb-srv
+          url: ~{srv-url}
+          forwardAuthToken: true
+
+  # ─── 4. KB Manager UI（Fiori Elements）───────────────
+  - name: onboarding-kb-manager-ui
+    type: html5
+    path: app/kb-manager
+    build-parameters:
+      builder: custom
+      commands:
+        - npm install --prefer-offline
+        - npm run build
+      build-result: dist
+      supported-platforms: []
+
+  # ─── 5. Chat UI5（聊天界面）──────────────────────────
+  - name: onboarding-kb-chat-ui
+    type: html5
+    path: app/chat-ui5
+    build-parameters:
+      builder: custom
+      commands:
+        - npm install --prefer-offline
+        - npm run build
+      build-result: dist
+      supported-platforms: []
+
+  # ─── 6. HTML5 Apps Deployer ───────────────────────────
+  - name: onboarding-kb-ui-deployer
+    type: com.sap.application.content
+    path: .
+    requires:
+      - name: onboarding-kb-html5-host
+        parameters:
+          content-target: true
+    build-parameters:
+      build-result: app-content
+      requires:
+        - artifacts:
+            - kbmanager.zip
+          name: onboarding-kb-manager-ui
+          target-path: app-content/
+        - artifacts:
+            - onboarding.kb.chat.zip
+          name: onboarding-kb-chat-ui
+          target-path: app-content/
+
+# ═══════════════════════════════════════════════════════
+# RESOURCES（BTP 服务实例）
+# ═══════════════════════════════════════════════════════
+resources:
+
+  # ─── HANA Cloud HDI Container ─────────────────────────
+  - name: onboarding-kb-db
+    type: com.sap.xs.hdi-container
+    parameters:
+      service: hana
+      service-plan: hdi-shared
+
+  # ─── XSUAA ────────────────────────────────────────────
+  - name: onboarding-kb-xsuaa
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: ./xs-security.json
+      config:
+        xsappname: onboarding-kb-assistant
+        tenant-mode: dedicated
+
+  # ─── SAP AI Core ──────────────────────────────────────
+  - name: onboarding-kb-aicore
+    type: org.cloudfoundry.existing-service
+    parameters:
+      service-name: aicore
+
+  # ─── Object Store ─────────────────────────────────────
+  - name: onboarding-kb-objectstore
+    type: org.cloudfoundry.existing-service
+    parameters:
+      service-name: objectstore-onboarding-kb
+
+  # ─── HTML5 Application Repository（Host）──────────────
+  - name: onboarding-kb-html5-host
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: html5-apps-repo
+      service-plan: app-host
+
+  # ─── HTML5 Application Repository（Runtime）───────────
+  - name: onboarding-kb-html5-runtime
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: html5-apps-repo
+      service-plan: app-runtime

@@ -1,0 +1,18 @@
+{
+  "welcomeFile": "index.html",
+  "authenticationMethod": "route",
+  "routes": [
+    {
+      "source": "^/api/(.*)$",
+      "target": "/api/$1",
+      "destination": "onboarding-kb-srv",
+      "authenticationType": "xsuaa"
+    },
+    {
+      "source": "^(.*)$",
+      "target": "$1",
+      "service": "html5-apps-repo-rt",
+      "authenticationType": "xsuaa"
+    }
+  ]
+}

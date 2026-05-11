@@ -13,9 +13,11 @@
     "@ui5/cli": "^4.0.33",
     "@sap/ux-ui5-tooling": "1",
     "@sap-ux/eslint-plugin-fiori-tools": "^9.0.0",
-    "eslint": "^9"
+    "eslint": "^9",
+    "ui5-task-zipper": "^3"
   },
   "scripts": {
+    "build": "npx --no ui5 build --clean-dest --dest dist && node zip-dist.mjs",
     "deploy-config": "npx -p @sap/ux-ui5-tooling fiori add deploy-config cf"
   }
 }

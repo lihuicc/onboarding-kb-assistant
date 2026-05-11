@@ -3,3 +3,10 @@ node_modules/
 *.sqlite
 .env
 gen/
+default-env.json
+scripts/upload-to-objectstore.js
+onboarding-kb-objectstore.json
+mta-op-*/
+*.mtar
+Makefile_*.mta
+dist/
