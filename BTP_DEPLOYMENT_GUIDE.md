@@ -1,7 +1,7 @@
 # 员工入职知识库助手 — SAP BTP 完整部署指南
 
-> **文档版本：** 1.0  
-> **日期：** 2026-04-15  
+> **文档版本：** 1.1  
+> **日期：** 2026-05-01  
 > **适用项目：** `onboarding-kb-assistant`（CAP Node.js + AI 对话）  
 > **目标环境：** SAP BTP Cloud Foundry + AI Core + Generative AI Hub
 
@@ -1034,31 +1034,65 @@ cds build --production
 
 - **AI Core** 引用 CF Space 中已有的服务实例（`existing-service`，名称 `aicore`）
 - **html5-apps-repo** 使用 `managed-service`，分两个 plan：`app-host`（上传 UI）和 `app-runtime`（运行时访问）
-- **html5 模块类型**必须用 `com.sap.application.content`，不能用 `html5`（后者会被当成 CF app 启动，导致 crash）
-- **build-result** 必须指向 `dist/manifest-bundle.zip`，该文件由 `ui5 build --include-task generateManifestBundle` 生成；HTML5 Repository 要求上传 zip 格式
+- **html5 模块类型**必须用 `com.sap.application.content`，不能用 `html5`（后者在 mbt build 时无法正确打包 zip artifact，导致 html5-host 没有内容上传）
+- **build-result** 指向 `ui5-task-zipper` 生成的 zip 文件路径（`dist/kbmanager.zip` / `dist/onboarding.kb.chat.zip`）
 - **html5 模块**需要在 `requires` 中加 `content-target: true`，否则 MTA 部署器会跳过上传步骤
+- **xs-app.json** 必须通过 `ui5-task-zipper` 的 `additionalFiles` 打包进每个 UI zip 内，HTML5 repo 依赖它做路由
+- **sap.cloud.public: true** 必须在每个 app 的 `manifest.json` 里声明，否则 app 不会出现在 BTP Cockpit HTML5 Applications 列表
 - **xs-app.json 路由 target** 必须和 `manifest.json` 的 `sap.app.id` 对应：`kb-manager` → `/kbmanager/$1`，`chat-ui5` → `/onboarding.kb.chat/$1`
+- **全局参数** 必须包含 `deploy_mode: html5-repo`，否则 html5-host 上传步骤不会触发
 - **Object Store 凭证**（`OS_*` 变量）不在 `mta.yaml` 中，部署后通过 `cf set-env` 注入（见 9.3 节）
 
-html5 模块正确写法示例：
+html5 模块正确写法示例（已验证可工作）：
 
 ```yaml
-- name: onboarding-kb-manager-ui
-  type: com.sap.application.content
-  path: app/kb-manager
-  build-parameters:
-    builder: custom
-    commands:
-      - npm install
-      - npm run build          # 包含 --include-task generateManifestBundle
-    build-result: dist/manifest-bundle.zip
-  requires:
-    - name: onboarding-kb-html5-host
-      parameters:
-        content-target: true
+parameters:
+  deploy_mode: html5-repo
+  enable-parallel-deployments: true
+
+modules:
+  - name: onboarding-kb-manager-ui
+    type: com.sap.application.content
+    path: app/kb-manager
+    build-parameters:
+      builder: custom
+      commands:
+        - npm ci --prefer-offline
+        - npm run build         # ui5 build，ui5-task-zipper 生成 kbmanager.zip
+      build-result: dist/kbmanager.zip
+      supported-platforms: []
+      timeout: 0
+    requires:
+      - name: onboarding-kb-html5-host
+        parameters:
+          content-target: true
+```
+
+**ui5-task-zipper 配置**（`ui5.yaml` 中）：
+
+```yaml
+builder:
+  customTasks:
+    - name: ui5-task-zipper
+      afterTask: generateResourcesJson
+      configuration:
+        archiveName: kbmanager      # 生成 dist/kbmanager.zip
+        additionalFiles:
+          - xs-app.json             # 必须打包进 zip
+```
+
+**manifest.json 必须包含**：
+
+```json
+"sap.cloud": {
+  "public": true,
+  "service": "kbmanager"
+}
 ```
 
 > **注意：** 如果你的 CF Space 里 AI Core 实例名不是 `aicore`，先运行 `cf services` 确认实际名称，再修改 `mta.yaml` 中对应的 `service-name`。
+
+> **常见坑：** 曾尝试使用 `type: html5` + 独立 `com.sap.application.content` 两层结构（仿照 captutorial 样例），但 mbt 会将 `resources/` 目录重新压缩成单个 `data.zip`，导致 html5-host 收到的不是正确的 app zip。正确做法是每个 UI app 单独一个 `com.sap.application.content` 模块，`build-result` 直接指向 zip 文件。
 
 ### 8.3 安装 approuter 依赖
 
